@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "regularization_tools"
+version = "0.0.1"
+authors = [
+  { name="Santiago Federico Caracciolo", email="santiago.caracciolo@gmail.com" },
+]
+description = "Implementation of Ridge and Tikhonov regularizations based on SVD (Singular Value Decomposition) and GSVD (Generalized Singular Value Decomposition)"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
