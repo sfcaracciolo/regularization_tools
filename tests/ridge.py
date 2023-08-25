@@ -18,9 +18,9 @@ for _ in range(100):
 
     skX = np.empty_like(X)
     for i, l in enumerate(lambdas):
-        skmodel = Ridge(l**2, fit_intercept=False, solver='svd')#, tol=1e-4)
+        skmodel = Ridge(l**2, fit_intercept=False, solver='svd')
         skX[i, ...] = skmodel.fit(A, B).coef_.T
 
-    assert np.allclose(X, skX, rtol=1e-5, atol=1e-8)
+    assert np.allclose(X, skX)
 
 print('OK')

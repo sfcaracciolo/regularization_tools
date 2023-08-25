@@ -66,7 +66,7 @@ class Regularizer:
         return cls(filter_factors, U, X, lambda_range=Regularizer.tikhonov_range(s_a, s_l))
 
     @staticmethod
-    def tikhonov_factors(sa, sb):
+    def tikhonov_factors(sa: np.ndarray, sb: np.ndarray):
         return lambda x: sa/(sa**2 + (x*sb)**2)
 
     @staticmethod

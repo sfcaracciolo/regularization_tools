@@ -9,7 +9,7 @@ for _ in range(100):
     N = 15
 
     A = np.random.rand(m, n)
-    L = np.eye(n) # np.random.rand(n, n)
+    L = np.eye(n)
     B = np.random.rand(m, N)
 
     model = Regularizer.tikhonov(A, L)
@@ -19,9 +19,9 @@ for _ in range(100):
 
     skX = np.empty_like(X)
     for i, l in enumerate(lambdas):
-        skmodel = Ridge(l**2, fit_intercept=False, solver='svd')#, tol=1e-4)
+        skmodel = Ridge(l**2, fit_intercept=False, solver='svd')
         skX[i, ...] = skmodel.fit(A, B).coef_.T
 
-    assert np.allclose(X, skX, rtol=1e-4, atol=1e-6)
+    assert np.allclose(X, skX)
 
 print('OK')
