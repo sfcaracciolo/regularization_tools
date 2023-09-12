@@ -1,13 +1,21 @@
-from typing import Callable
 import numpy as np
 from gsvd import gsvd
+from abc import ABC, abstractmethod
 
-class Regularizer:
-    def __init__(self, filter_factors: Callable, U: np.ndarray, V: np.ndarray, lambda_range: tuple = None) -> None:
-        self.filter_factors = filter_factors
-        self.U = U
-        self.V = V
-        self.lambda_range = lambda_range
+class Regularizer(ABC):
+    
+    def set_lambdas(self, e_min: float, e_max: float, num: int):
+        inf, sup = [np.log10(a*b) for a, b in zip((e_min, e_max), self.lims)]
+        self.lambdas = np.logspace(sup, inf, num, endpoint=True)
+        self.f = self.compute_filter_factors()
+    
+    def compute_filter_factors(self):
+        p = self.lambdas.size
+        _, r = self.V.shape
+        f = np.empty((p, r), dtype=np.float32) # filter factors
+        broad_l = self.lambdas[:, np.newaxis] # p x 1
+        f[:] = self.filter_factors(broad_l)
+        return f
 
     def solve(self, B: np.ndarray):
         """
@@ -35,54 +43,49 @@ class Regularizer:
             np.outer(fi, ri, out=T)
             X += T[:, np.newaxis, :] * vi[np.newaxis, :, np.newaxis] # [p, 1, N] * [1, n, 1] = [p, n, N]
         return X
+    
+    @abstractmethod
+    def factor_lims(self, s: np.ndarray) -> tuple[float, float]:
+        raise NotImplemented
+    
+    @abstractmethod
+    def filter_factors(self, lambdas: np.ndarray) -> np.ndarray:
+        raise NotImplemented
 
-    @classmethod
-    def ridge(cls, A: np.ndarray):
+class Ridge(Regularizer):
+
+    def __init__(self, A: np.ndarray) -> None:
         """ Zero Order Tikhonov
         s = r x 1
         U = m x r
         """
-        U, s, Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
-        V = Vt.T # n x r
-        # broad_s = s[np.newaxis, :] # 1 x r
-        filter_factors = Regularizer.rigde_factors(s)
-        return cls(filter_factors, U, V, lambda_range=Regularizer.rigde_range(s))
+        self.U, self.s, Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
+        self.V = Vt.T # n x r
+        self.lims = self.factor_lims(self.s)
     
-    @staticmethod
-    def rigde_factors(s: np.ndarray):
-        return lambda x: s/(s**2 + x**2)
+    def filter_factors(self, lambdas: np.ndarray):
+        return self.s/(self.s**2 + lambdas**2)
     
-    @staticmethod
-    def rigde_range(s: np.ndarray):
-        s[s==0.] = np.nan
-        return np.nanmin(s), np.nanmax(s)
+    def factor_lims(self, s: np.ndarray):
+        return np.min(s), np.max(s)
 
-    @classmethod
-    def tikhonov(cls, A: np.ndarray, L: np.ndarray):
+class Tikhonov(Regularizer):
+
+    def __init__(self, A: np.ndarray, B: np.ndarray) -> None:
         """ High Order Tikhonov"""
         m, n = A.shape
-        (U, _), (D_A, D_L), X = gsvd(A, L)
-        s_a = np.zeros(n, dtype=np.float32)
-        s_a[:m] = D_A.diagonal()
-        s_l = D_L.diagonal()
-        filter_factors = Regularizer.tikhonov_factors(s_a, s_l)
-        return cls(filter_factors, U, X, lambda_range=Regularizer.tikhonov_range(s_a, s_l))
+        (self.U, _), (D_A, D_B), X = gsvd(A, B)
+        self.sa = np.zeros(n, dtype=np.float32)
+        self.sa[:m] = D_A.diagonal()
+        self.sb = D_B.diagonal()
+        self.V = X
+        self.lims = self.factor_lims(self.sa/self.sb)
+    
+    def filter_factors(self, lambdas: np.ndarray):
+        return self.sa/(self.sa**2 + (lambdas*self.sb)**2)
 
-    @staticmethod
-    def tikhonov_factors(sa: np.ndarray, sb: np.ndarray):
-        return lambda x: sa/(sa**2 + (x*sb)**2)
+    def factor_lims(self, s: np.ndarray):
+        s[s==0.] = np.nan
+        return np.nanmin(s), np.nanmax(s)
+    
 
-    @staticmethod
-    def tikhonov_range(sa: np.ndarray, sb: np.ndarray):
-        return Regularizer.rigde_range(sa/sb)
-
-    def compute_filter_factors(self, lambdas: np.ndarray):
-        p = lambdas.size
-        _, r = self.V.shape
-        self.f = np.empty((p, r), dtype=np.float32) # filter factors
-        broad_l = lambdas[:, np.newaxis] # p x 1
-        self.f[:] = self.filter_factors(broad_l)
-
-    def lambda_logspace(self, e_min, e_max, num: int):
-        inf, sup = [np.log10(a*b) for a, b in zip((e_min, e_max), self.lambda_range)]
-        return np.logspace(sup, inf, num, endpoint=True)

@@ -11,7 +11,7 @@ If $L = I_n$ use ``Regularizer.rigde`` method class, otherwise ``Regularizer.tik
 ## Usage
 
 ```python
-from regularization_tools import Regularizer
+from regularization_tools import Ridge, Tikhonov
 import numpy as np 
 
 # matrix definition
@@ -23,17 +23,14 @@ N = 15
 Y = np.random.rand(m, N)
 
 # Ridge model
-model = Regularizer.ridge(A)
+model = Ridge(A)
 
 # or Tikhonov model (require L matrix additionally)
-# model = Regularizer.tikhonov(A, L)
+# model = Tikhonov(A, L)
 
-# hyperparameter definition
+# hyperparameter definition 
 p = 10
-lambdas = model.lambda_logspace(*model.lambda_range, p)
-
-# set the filter factors of ridge regression
-model.compute_filter_factors(lambdas)
+model.set_lambdas(1e-2, 1e2, p) # 1e-2 and 1e2 times the lims of filter factores.
 
 # solver
 X = model.solve(Y)

@@ -1,6 +1,6 @@
-from src.regularization_tools import *
+from src.regularization_tools import Ridge
 import numpy as np 
-from sklearn.linear_model import Ridge
+import sklearn.linear_model as skl
 
 for _ in range(100):
     
@@ -11,14 +11,13 @@ for _ in range(100):
     A = np.random.rand(m, n)
     B = np.random.rand(m, N)
 
-    model = Regularizer.ridge(A)
-    lambdas = model.lambda_logspace(*model.lambda_range, p)
-    model.compute_filter_factors(lambdas)
+    model = Ridge(A)
+    model.set_lambdas(1e-2, 1e2, p)
     X = model.solve(B)
 
     skX = np.empty_like(X)
-    for i, l in enumerate(lambdas):
-        skmodel = Ridge(l**2, fit_intercept=False, solver='svd')
+    for i, l in enumerate(model.lambdas):
+        skmodel = skl.Ridge(l**2, fit_intercept=False, solver='svd')
         skX[i, ...] = skmodel.fit(A, B).coef_.T
 
     assert np.allclose(X, skX)
