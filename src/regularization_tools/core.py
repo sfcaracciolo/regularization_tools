@@ -18,6 +18,9 @@ class Regularizer:
         U [m, r]
         V [n, r]
         """
+        if B.ndim == 1:
+            B = B[:,np.newaxis]
+
         p, _ = self.f.shape
         _, N = B.shape
         n, _ = self.V.shape
@@ -80,5 +83,6 @@ class Regularizer:
         broad_l = lambdas[:, np.newaxis] # p x 1
         self.f[:] = self.filter_factors(broad_l)
 
-    def lambda_logspace(self, l_min, l_max, num: int):
-        return np.logspace(np.log10(l_max), np.log10(l_min), num, endpoint=True)
+    def lambda_logspace(self, e_min, e_max, num: int):
+        inf, sup = [np.log10(a*b) for a, b in zip((e_min, e_max), self.lambda_range)]
+        return np.logspace(sup, inf, num, endpoint=True)
