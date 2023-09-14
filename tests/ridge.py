@@ -12,7 +12,7 @@ for _ in range(100):
     B = np.random.rand(m, N)
 
     model = Ridge(A)
-    model.set_lambdas(1e-2, 1e2, p)
+    model.auto_lambdas(1e-2, 1e2, p)
     X = model.solve(B)
 
     skX = np.empty_like(X)
