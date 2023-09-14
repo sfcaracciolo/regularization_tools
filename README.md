@@ -30,7 +30,8 @@ model = Ridge(A)
 
 # hyperparameter definition 
 p = 10
-model.set_lambdas(1e-2, 1e2, p) # 1e-2 and 1e2 times the lims of filter factores.
+# model.set_lambdas(1e-3, 1e3, p) # manual lambda range
+model.auto_lambdas(1e-2, 1e2, p) # 1e-2 and 1e2 times the lims of filter factores.
 
 # solver
 X = model.solve(Y)
