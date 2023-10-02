@@ -2,6 +2,8 @@ import numpy as np
 from gsvd import gsvd
 from abc import ABC, abstractmethod
 
+import scipy as sp
+
 class AbstractRegularizer(ABC):
 
     def auto_lambdas(self, e_min: float, e_max: float, num: int):
@@ -49,6 +51,17 @@ class AbstractRegularizer(ABC):
     
     def metric(self, M: np.ndarray):
         return np.linalg.norm(M, ord='fro', axis=(1, 2))
+
+    @staticmethod
+    def random_matrix_by_cond_number(N: int, k: float, seed: int = None):
+        """ Generator of a correlation random matrix (N, N) with condition number equal to 10^k"""
+        f = lambda x, a, b: a/x**b
+        n = np.arange(1, N+1)
+        b = k / np.log10(N)
+        r = np.sum(f(n, 1, b)) # if b > 1 sp.special.zeta(b, 1) - sp.special.zeta(b, N+1) works
+        a = N/r
+        X = sp.stats.random_correlation(f(n, a, b), seed)
+        return X.rvs()
 
     @abstractmethod
     def compute_penalizations(self) -> np.ndarray:
@@ -125,3 +138,4 @@ class Tikhonov(AbstractRegularizer):
         E = np.swapaxes(E, 1, 0)
         self.R = self.metric(E)
         return self.R
+    
