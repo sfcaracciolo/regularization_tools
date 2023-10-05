@@ -1,59 +1,12 @@
 import numpy as np
 from gsvd import gsvd
 from abc import ABC, abstractmethod
-
 import scipy as sp
 
 class AbstractRegularizer(ABC):
-
-    def auto_lambdas(self, e_min: float, e_max: float, num: int):
-        inf, sup = [a*b for a, b in zip((e_min, e_max), self.lims)]
-        self.set_lambdas(inf, sup, num)
-
-    def set_lambdas(self, l_min: float, l_max: float, num: int):
-        self.lambdas = np.logspace(np.log10(l_min), np.log10(l_max), num, endpoint=True)
-        self.compute_filter_factors()
     
-    def compute_filter_factors(self):
-        p = self.lambdas.size
-        _, r = self.V.shape
-        self.f = np.empty((p, r), dtype=np.float32) # filter factors
-        self.f[:] = self.filter_factors(self.lambdas[:, np.newaxis]) # p x 1
-        return self.f
-
-    def solve(self, Y: np.ndarray):
-        """
-        A [m, n], n > m, r = rank(A)
-        Y [m, N], N = # samples
-        
-        f [p, r], p = # lambdas.
-        U [m, r]
-        V [n, r]
-        """
-        if Y.ndim == 1:
-            Y = Y[:,np.newaxis]
-
-        self.Y = Y
-        p, _ = self.f.shape
-        _, N = Y.shape
-        n, _ = self.V.shape
-        m, _ = self.U.shape
-        self.X = np.zeros((p, n, N), dtype=np.float64)
-        T = np.zeros((p, N), dtype=np.float64)
-        R = self.U.T @ Y # r x N
-        for i in range(m):
-            vi = self.V[:, i] # [n]
-            fi = self.f[:, i] # [p]
-            ri = R[i, :] # [N]
-            np.outer(fi, ri, out=T)
-            self.X += T[:, np.newaxis, :] * vi[np.newaxis, :, np.newaxis] # [p, 1, N] * [1, n, 1] = [p, n, N]
-        return self.X
-    
-    def metric(self, M: np.ndarray):
-        return np.linalg.norm(M, ord='fro', axis=(1, 2))
-
     @staticmethod
-    def random_matrix_by_cond_number(N: int, k: float, seed: int = None):
+    def ill_cond_matrix(N: int, k: float, seed: int = None):
         """ Generator of a correlation random matrix (N, N) with condition number equal to 10^k"""
         f = lambda x, a, b: a/x**b
         n = np.arange(1, N+1)
@@ -63,79 +16,107 @@ class AbstractRegularizer(ABC):
         X = sp.stats.random_correlation(f(n, a, b), seed)
         return X.rvs()
 
-    @abstractmethod
-    def compute_penalizations(self) -> np.ndarray:
-        raise NotImplemented
-    
-    @abstractmethod
-    def compute_residuals(self) -> np.ndarray:
-        raise NotImplemented
-    
-    @abstractmethod
-    def factor_lims(self, s: np.ndarray) -> tuple[float, float]:
-        raise NotImplemented
-    
-    @abstractmethod
-    def filter_factors(self, lambdas: np.ndarray) -> np.ndarray:
-        raise NotImplemented
+    @staticmethod
+    def lambdaspace(start: float, end: float, num: int = 100):
+        return np.logspace(np.log10(start), np.log10(end), num, endpoint=True)
 
+    @abstractmethod
+    def penalization(self, *args) -> np.ndarray:
+        raise NotImplemented
+    
+    @abstractmethod
+    def residual(self, *args) -> np.ndarray:
+        raise NotImplemented
+    
+    @abstractmethod
+    def solve(self, *args) -> np.ndarray:
+        raise NotImplemented
+    
 class Ridge(AbstractRegularizer):
 
     def __init__(self, A: np.ndarray) -> None:
         """ Zero Order Tikhonov
-        s = r x 1
-        U = m x r
+        A : m x n
+        r = rank(A)
+        S : r x r
+        U : m x r
+        V :  n x r
         """
         self.A = A
-        self.U, self.s, Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
+        self.U, s, Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
         self.V = Vt.T # n x r
-        self.lims = self.factor_lims(self.s)
+        self.S = sp.sparse.dia_matrix((s, 0), shape=(s.size, s.size), dtype=np.float64)
     
-    def filter_factors(self, lambdas: np.ndarray):
-        return self.s/(self.s**2 + lambdas**2)
-    
-    def factor_lims(self, s: np.ndarray):
-        return np.min(s), np.max(s)
+    def solve(self, Y: np.ndarray, lambdas: np.ndarray):
+        """
+        Y : m x N 
+        N = # samples
+        """
+        if Y.ndim == 1:
+            Y = Y[:,np.newaxis]
 
-    def compute_penalizations(self) -> np.ndarray:
-        self.P = self.metric(self.X)
-        return self.P
+        p = lambdas.size
+        _, N = Y.shape
+        n, r = self.V.shape
+        m, _ = self.U.shape
+
+        s2 = self.S.diagonal()**2
+        Z = self.S.T @ self.U.T @ Y
+        X = np.empty((p, n, N), dtype=np.float64)
+        for i in range(p):
+            ff = 1./(s2 + lambdas[i]**2)
+            invDl = sp.sparse.dia_matrix((ff, 0), shape=(r, r), dtype=np.float64)
+            X[i] = self.V @ invDl @ Z
+        return X
     
-    def compute_residuals(self) -> np.ndarray:
-        E = np.tensordot(self.A, self.X, axes=(1,1)) - self.Y[:, np.newaxis, :]
-        E = np.swapaxes(E, 1, 0)
-        self.R = self.metric(E)
-        return self.R
+    def penalization(self, X: np.ndarray) -> np.ndarray:
+        return np.linalg.norm(X, ord='fro', axis=(1, 2))
+    
+    def residual(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+        E = np.tensordot(self.A, X, axes=(1,1)) - Y[:, np.newaxis, :]
+        return np.linalg.norm(E, ord='fro', axis=(0, 2))
 
 class Tikhonov(AbstractRegularizer):
 
     def __init__(self, A: np.ndarray, B: np.ndarray) -> None:
-        """ High Order Tikhonov"""
+        """ High Order Tikhonov
+        A : p x n
+        B : m1 x n
+        r = rank([A, B]') must be full (r=n)
+        U_1 : p x p
+        X :  n x n
+        """
         self.A, self.B = A, B
-        m, n = A.shape
-        (self.U, _), (D_A, D_B), X = gsvd(A, B)
-        self.sa = np.zeros(n, dtype=np.float32)
-        self.sa[:m] = D_A.diagonal()
-        self.sb = D_B.diagonal()
-        self.V = X
-        self.lims = self.factor_lims(self.sa/self.sb)
+        (self.U_1, _), (self.D_A, self.D_B), self.X = gsvd(A, B, tol=1e-16)
+
+    def solve(self, Y: np.ndarray, lambdas: np.ndarray):
+        """
+        Y : p x N 
+        N = # samples
+        """
+        if Y.ndim == 1:
+            Y = Y[:,np.newaxis]
+
+        _p = lambdas.size
+        _, N = Y.shape
+        n, _= self.X.shape
+        
+        a2 = (self.D_A.T @ self.D_A).diagonal()
+        a = np.sqrt(a2)
+        b2 = (self.D_B.T @ self.D_B).diagonal()
+        Z = self.D_A.T @ self.U_1.T @ Y
+        X = np.empty((_p, n, N), dtype=np.float64)
+        for i in range(_p):
+            ff = a/(a2 + b2 * lambdas[i]**2)
+            invDl = sp.sparse.dia_matrix((ff, 0), shape=(n, n), dtype=np.float64)
+            X[i] = self.X @ invDl @ Z
+        return X
+
+    def penalization(self, X: np.ndarray) -> np.ndarray:
+        E = np.tensordot(self.B, X, axes=(1, 1))
+        return np.linalg.norm(E, ord='fro', axis=(0, 2))
     
-    def filter_factors(self, lambdas: np.ndarray):
-        return self.sa/(self.sa**2 + (lambdas*self.sb)**2)
-
-    def factor_lims(self, s: np.ndarray):
-        s[s==0.] = np.nan
-        return np.nanmin(s), np.nanmax(s)
-
-    def compute_penalizations(self) -> np.ndarray:
-        M = np.tensordot(self.B, self.X, axes=(1, 1))
-        M = np.swapaxes(M, 1, 0)
-        self.P = self.metric(M)
-        return self.P
-
-    def compute_residuals(self) -> np.ndarray:
-        E = np.tensordot(self.A, self.X, axes=(1,1)) - self.Y[:, np.newaxis, :]
-        E = np.swapaxes(E, 1, 0)
-        self.R = self.metric(E)
-        return self.R
+    def residual(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+        E = np.tensordot(self.A, X, axes=(1,1)) - Y[:, np.newaxis, :]
+        return np.linalg.norm(E, ord='fro', axis=(0, 2))
     

@@ -12,11 +12,11 @@ for _ in range(100):
     B = np.random.rand(m, N)
 
     model = Ridge(A)
-    model.auto_lambdas(1e-2, 1e2, p)
-    X = model.solve(B)
+    lambdas = model.lambdaspace(1e-4, 1e4, p)
+    X = model.solve(B, lambdas)
 
     skX = np.empty_like(X)
-    for i, l in enumerate(model.lambdas):
+    for i, l in enumerate(lambdas):
         skmodel = skl.Ridge(l**2, fit_intercept=False, solver='svd')
         skX[i, ...] = skmodel.fit(A, B).coef_.T
 
