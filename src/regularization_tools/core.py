@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 import numpy as np
 from gsvd import gsvd
 from abc import ABC, abstractmethod
@@ -7,11 +8,12 @@ class AbstractRegularizer(ABC):
     
     @staticmethod
     def ill_cond_matrix(N: int, k: float, seed: int = None):
-        """ Generator of a correlation random matrix (N, N) with condition number equal to 10^k"""
+        """ Generator of a correlation random matrix (N, N) with condition number equal to 10^k. k >= 0."""
         f = lambda x, a, b: a/x**b
         n = np.arange(1, N+1)
         b = k / np.log10(N)
-        r = np.sum(f(n, 1, b)) # if b > 1 sp.special.zeta(b, 1) - sp.special.zeta(b, N+1) works
+        r = np.sum(f(n, 1, b)) 
+        # if b > 1: r = sp.special.zeta(b, 1) - sp.special.zeta(b, N+1) works
         a = N/r
         X = sp.stats.random_correlation(f(n, a, b), seed)
         return X.rvs()
@@ -36,37 +38,36 @@ class Ridge(AbstractRegularizer):
 
     def __init__(self, A: np.ndarray) -> None:
         """ Zero Order Tikhonov
-        A : m x n
+        A : p x n
         r = rank(A)
         S : r x r
-        U : m x r
+        U : p x r
         V :  n x r
         """
         self.A = A
-        self.U, s, Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
-        self.V = Vt.T # n x r
+        self.U, s, self.Vt = np.linalg.svd(A, full_matrices=False, compute_uv=True)
         self.S = sp.sparse.dia_matrix((s, 0), shape=(s.size, s.size), dtype=np.float64)
     
     def solve(self, Y: np.ndarray, lambdas: np.ndarray):
         """
-        Y : m x N 
+        Y : p x N 
         N = # samples
         """
         if Y.ndim == 1:
             Y = Y[:,np.newaxis]
 
-        p = lambdas.size
+        _p = lambdas.size
         _, N = Y.shape
-        n, r = self.V.shape
-        m, _ = self.U.shape
+        r, n = self.Vt.shape
 
         s2 = self.S.diagonal()**2
         Z = self.S.T @ self.U.T @ Y
-        X = np.empty((p, n, N), dtype=np.float64)
-        for i in range(p):
+        V = self.Vt.T
+        X = np.empty((_p, n, N), dtype=np.float64)
+        for i in range(_p):
             ff = 1./(s2 + lambdas[i]**2)
             invDl = sp.sparse.dia_matrix((ff, 0), shape=(r, r), dtype=np.float64)
-            X[i] = self.V @ invDl @ Z
+            X[i] = V @ invDl @ Z
         return X
     
     def penalization(self, X: np.ndarray) -> np.ndarray:
@@ -102,14 +103,13 @@ class Tikhonov(AbstractRegularizer):
         n, _= self.X.shape
         
         a2 = (self.D_A.T @ self.D_A).diagonal()
-        a = np.sqrt(a2)
         b2 = (self.D_B.T @ self.D_B).diagonal()
         Z = self.D_A.T @ self.U_1.T @ Y
         X = np.empty((_p, n, N), dtype=np.float64)
         for i in range(_p):
-            ff = a/(a2 + b2 * lambdas[i]**2)
+            ff = 1./(a2 + b2*lambdas[i]**2)
             invDl = sp.sparse.dia_matrix((ff, 0), shape=(n, n), dtype=np.float64)
-            X[i] = self.X @ invDl @ Z
+            X[i] = self.X @ (invDl @ Z)
         return X
 
     def penalization(self, X: np.ndarray) -> np.ndarray:

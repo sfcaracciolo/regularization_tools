@@ -20,6 +20,6 @@ for _ in range(100):
     for i, l in enumerate(lambdas):
         skmodel = skl.Ridge(l**2, fit_intercept=False, solver='svd')
         skX[i, ...] = skmodel.fit(A, Y).coef_.T
-    assert np.allclose(skX, X, rtol=1e-2, atol=1e-6)
+    assert np.allclose(skX, X, rtol=1e-6, atol=1e-8)
 
 print('OK')
