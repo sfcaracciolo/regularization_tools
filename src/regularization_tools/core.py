@@ -1,4 +1,3 @@
-from matplotlib import pyplot as plt
 import numpy as np
 from gsvd import gsvd
 from abc import ABC, abstractmethod
@@ -109,7 +108,7 @@ class Tikhonov(AbstractRegularizer):
         for i in range(_p):
             ff = 1./(a2 + b2*lambdas[i]**2)
             invDl = sp.sparse.dia_matrix((ff, 0), shape=(n, n), dtype=np.float64)
-            X[i] = self.X @ (invDl @ Z)
+            X[i] = self.X @ invDl @ Z
         return X
 
     def penalization(self, X: np.ndarray) -> np.ndarray:
