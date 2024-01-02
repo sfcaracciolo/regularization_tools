@@ -14,20 +14,20 @@ N1 = rng.random(size=(n, 1))
 for N in [N0, N1]:
     p0 = Plotter(_2d=True, figsize=(5,5))
     for k, style in zip([1, 2, 3], ['-k', '--k', '-.k']):
-        A = Ridge.random_matrix_by_cond_number(n, k=k, seed=0)
+        A = Ridge.ill_cond_matrix(n, k=k, seed=0)
         # print(f'cond = {np.linalg.cond(A) : .0g}')
         B = A@x 
         noisy_B = B + 1e-3*N
         model = Ridge(A)
-        model.set_lambdas(1e-4, 1e3, p)
-        xs = model.solve(noisy_B)
+        lambdas = model.lambdaspace(1e-4, 1e3, p)
+        xs = model.solve(noisy_B, lambdas)
 
         err = np.linalg.norm(xs-x[np.newaxis, :, :], axis=(1,2))
         err /= np.linalg.norm(x)
 
-        p0.axs.loglog(model.lambdas, err, style)
+        p0.axs.loglog(lambdas, err, style)
         opt_ix = err.argmin()
-        p0.axs.axvline(model.lambdas[opt_ix], color='gray', linewidth=.25)
+        p0.axs.axvline(lambdas[opt_ix], color='gray', linewidth=.25)
 
     p0.axs.set_xlabel('(log-log)')
     p0.axs.set_xlabel('$\lambda$')
